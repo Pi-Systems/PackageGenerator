@@ -9,6 +9,8 @@ use WsdlToPhp\PackageGenerator\Model\StructValue;
 /**
  * @method string getCategory()
  * @method self   setCategory(string $category)
+ * @method bool   getDefaultNullableRequired()
+ * @method self   setDefaultNullableRequired(bool $enabled)
  * @method string getGatherMethods()
  * @method self   setGatherMethods(string $gatherMethods)
  * @method bool   getGenerateTutorialFile()

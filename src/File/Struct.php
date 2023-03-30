@@ -177,9 +177,52 @@ class Struct extends AbstractModelFile
         try {
             $defaultValue = $attribute->getDefaultValue();
 
+            /*
+             * I want to raise the following argument:
+             *
+             * Handle required nullables as non-required in the constructor.
+             *
+             * After all, who cares who sets the NULL.
+             * (To prevent the 'I DO!' argument, this behavior should be
+             * configurable, as you may want to indeed require them to be
+             * conciously set. (Even though it's a pain))
+             *
+             * Optional suggested change:
+             * - bool $d,
+             * - ?int $c = null // Defaulted 'required' attibute
+             * - ?string $a = null
+             * - ?int $b = null
+             * - ?object $e = null
+             *
+             * This would reduce the call back down to just:
+             * $obj = new Object(true);
+             * $obj = new Object(a:true);
+             *
+             * $c would still internally be the expected NULL attribute.
+             *
+             * $attribute->isRequired has no nuance.
+             * Or more specifically, the generator treats ->isRequired as
+             * an idicator of drawing ' = null' where it should really check
+             * both ->isRequired and ->isNullable (Debatable/?Configurable)
+             *
+             * This change muddies the docblock
+             * but allows normal object generation
+             *
+             * It checks 'use' === 'required'  or any variation of minOccurs
+             * being larger then 0
+             *
+             * For obvious reasons, I do not expect that change to be done here.
+             * This is just a POC that just forces the attribute to act as if
+             * it is not required. (thus rendering as a nullable non-required).
+             */
+
+            $options = $this->getGenerator()->getOptions();
+            $defaultNullableRequire =
+                ($options && $options->getOptionValue('default_nullable_required'));
+
             return new PhpFunctionParameter(
                 lcfirst($attribute->getUniqueString($attribute->getCleanName(), 'method')),
-                $attribute->isRequired() && !$attribute->isAChoice() ? AssignedValueElementInterface::NO_VALUE : (str_contains($type ?? '', '?') ? $defaultValue ?? null : $defaultValue),
+                $attribute->isRequired() && !$attribute->isAChoice() && !($attribute->isNullable() && $defaultNullableRequire) ? AssignedValueElementInterface::NO_VALUE : (str_contains($type ?? '', '?') ? $defaultValue ?? null : $defaultValue),
                 $type,
                 $attribute
             );

@@ -104,3 +104,6 @@ schemas_folder:
 xsd_types_path:
     default: ''
     values: ''
+default_nullable_required:
+    default: true
+    values: [ true, false ]

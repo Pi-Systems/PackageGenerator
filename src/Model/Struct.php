@@ -391,29 +391,123 @@ final class Struct extends AbstractModel
         }
     }
 
-    protected function putRequiredAttributesFirst(StructAttributeContainer $allAttributes): StructAttributeContainer
+    protected function putRequiredAttributesFirst(
+        StructAttributeContainer $allAttributes
+    )
+    : StructAttributeContainer
     {
         $attributes = new StructAttributeContainer($this->getGenerator());
+
         $requiredAttributes = [];
+        $nullableRequiredAttributes = [];
         $notRequiredAttributes = [];
         $nullableNotRequiredAttributes = [];
 
         /** @var StructAttribute $attribute */
         foreach ($allAttributes as $attribute) {
-            if ($attribute->isRequired() && !$attribute->isNullable()) {
-                $requiredAttributes[] = $attribute;
-            } elseif (!$attribute->isNullable()) {
-                $notRequiredAttributes[] = $attribute;
-            } else {
-                $nullableNotRequiredAttributes[] = $attribute;
+            /*
+             * There are 4 possible states, not just 3
+             * Required
+             * Required nullable
+             * Not required nullable
+             * Not required
+             *
+             * php constructor expects order required, not-required
+             * However, there is no (real) difference tp a nullable
+             * required and a nullable non-required.
+             * The only difference being being the question of
+             * 'do we force the user to set NULL for this?'.
+             * Personally I would vote against this.
+             * I work with (stupidly) large wsdl's with constructors ranging
+             * from 5-10 arguments to behemoths of over 70+ arguments, with
+             * required attributes near the end.
+             * (No, that is not a mistake).
+             *
+             * A few of these require setting 20+ entries as required-nullable.
+             * That would mean that, even with ordering, you would still have to
+             * call new Object(NULL,NULL,...x18);
+             * It gets worse when using positional arguments..
+             *
+             * Imagine a situation such as:
+             * <ele minOccurs="0" nillable=true string...> $a
+             * <ele minOccurs="0" nillable=true int...> $b
+             * <ele minOccurs="1" nillable=true int...> $c
+             * <ele minOccurs="1" nillable=false bool...> $d
+             * <ele minOccurs="0" nillable=true object...> $e
+             *
+             * The commit 876d3c480204ad07a6081dc1adbaad3bc84b0c24 sorts them as
+             * such:
+             *
+             * - bool $d
+             * - ?string $a = null
+             * - ?int $b = null
+             * - ?object $e = null
+             * - ?int $c
+             *
+             * Trying to instantiate the object would cause issues:
+             * $obj = new Object(); // Expected error, argument 1 required
+             * $obj = new Object(true); // Expected error, To few arguments passed
+             * $obj = new Object(a: true, c: 1); // "Unexpected" error, Argument #2 ($b) is not passed.
+             * $obj = new Object(true, NULL, NULL, NULL, $o); // Works but.... come on
+             * $obj = new Object(a:true, b:NULL, c:NULL, d:NULL, e:$o); // Just shoot me
+             *
+             *
+             * Considering I have struct definitions from external sources with
+             * 70+ constructor arguments, I would rather be shot then have to
+             * deal with the constructor mayhem that this would cause.
+             *
+             * A Suggested change:
+             *
+             * - bool $d,
+             * - ?int $c,
+             * - ?string $a = null
+             * - ?int $b = null
+             * - ?object $e = null
+             *
+             * Now a constructor call should only need 2 variables.
+             *
+             * $obj = new Object(1,2); // No error
+             *
+             * And I can happily skip 70+ arguments.
+             */
+            if ($attribute->isRequired()) {
+                if (!$attribute->isNullable()) {
+                    $requiredAttributes[] = $attribute;
+                }
+                else {
+                    $nullableRequiredAttributes[] = $attribute;
+                }
+            }
+            else {
+                if (!$attribute->isNullable()) {
+                    $notRequiredAttributes[] = $attribute;
+                }
+                else {
+                    $nullableNotRequiredAttributes[] = $attribute;
+                }
             }
         }
 
+        /*
+         * - bool $d,
+         * - ?int $c,
+         * - ?string $a = null
+         * - ?int $b = null
+         * - ?object $e = null
+         *
+         * (Not 100% why I need to add them in reverse order, but reverse order it is)
+         */
         array_walk($requiredAttributes, [$attributes, 'add']);
+        array_walk($nullableRequiredAttributes, [$attributes, 'add']);
         array_walk($notRequiredAttributes, [$attributes, 'add']);
         array_walk($nullableNotRequiredAttributes, [$attributes, 'add']);
 
-        unset($requiredAttributes, $notRequiredAttributes, $nullableNotRequiredAttributes);
+        unset(
+            $requiredAttributes,
+            $nullableRequiredAttributes,
+            $notRequiredAttributes,
+            $nullableNotRequiredAttributes
+        );
 
         return $attributes;
     }
